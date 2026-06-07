@@ -5,7 +5,10 @@ const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000';
 async function parseResponse(response: Response) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(payload.error || 'Server error');
+    const message = payload.message || payload.error || response.statusText || 'Server error';
+    const error = new Error(message);
+    (error as any).status = response.status;
+    throw error;
   }
   return payload;
 }

@@ -34,6 +34,18 @@ router.post('/entry', async (req, res) => {
   try {
     await client.query('BEGIN');
 
+    const normalizedPlate = licensePlate.trim().toUpperCase();
+
+    const activeSessionResult = await client.query(
+      'SELECT id FROM parking_sessions WHERE license_plate = $1 AND exited_at IS NULL FOR UPDATE',
+      [normalizedPlate]
+    );
+
+    if (activeSessionResult.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'This registration number already has an active parking session.' });
+    }
+
     const spaceResult = await client.query(
       'SELECT is_vacant FROM parking_spaces WHERE space_number = $1 FOR UPDATE',
       [spaceNumber]
@@ -56,7 +68,7 @@ router.post('/entry', async (req, res) => {
 
     await client.query(
       'INSERT INTO parking_sessions (license_plate, space_number, entered_at) VALUES ($1, $2, NOW())',
-      [licensePlate.trim().toUpperCase(), spaceNumber]
+      [normalizedPlate, spaceNumber]
     );
 
     await client.query('COMMIT');
@@ -126,7 +138,7 @@ router.get('/admin/parked', async (req, res) => {
        ORDER BY p.space_number`
     );
 
-    const activeCars = activeResult.rows.map((row) => ({
+    const activeCars = activeResult.rows.map((row: { space_number: number; license_plate: string; entered_at: string }) => ({
       spaceNumber: row.space_number,
       licensePlate: row.license_plate,
       enteredAt: row.entered_at,
